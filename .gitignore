@@ -1,0 +1,45 @@
+# Flutter / Dart
+*.iml
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrated_to_swiftpm
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+ios/Pods/
+ios/.symlinks/
+local.properties
+
+# Android
+android/.gradle/
+android/captures/
+android/local.properties
+android/key.properties
+*.jks
+*.keystore
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# 本地临时文件
+_recon/
+_android_assets/
+temp/
+*.bak
+*.bak.*
