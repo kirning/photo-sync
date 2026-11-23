@@ -24,6 +24,7 @@ class AppSettings {
     this.notifyOnComplete = true,
     this.minImageBytes = 0,
     this.skipHidden = true,
+    this.autoCheckUpdate = true,
     this.lastStorageId,
   });
 
@@ -34,6 +35,9 @@ class AppSettings {
   bool notifyOnComplete;
   int minImageBytes;
   bool skipHidden;
+
+  /// 启动时自动检查 GitHub 上是否有新版本。
+  bool autoCheckUpdate;
   String? lastStorageId;
 
   AppSettings copy() => AppSettings(
@@ -44,6 +48,7 @@ class AppSettings {
         notifyOnComplete: notifyOnComplete,
         minImageBytes: minImageBytes,
         skipHidden: skipHidden,
+        autoCheckUpdate: autoCheckUpdate,
         lastStorageId: lastStorageId,
       );
 
@@ -55,6 +60,7 @@ class AppSettings {
         'notifyOnComplete': notifyOnComplete,
         'minImageBytes': minImageBytes,
         'skipHidden': skipHidden,
+        'autoCheckUpdate': autoCheckUpdate,
         'lastStorageId': lastStorageId,
       };
 
@@ -70,6 +76,7 @@ class AppSettings {
         notifyOnComplete: json['notifyOnComplete'] as bool? ?? true,
         minImageBytes: (json['minImageBytes'] as num?)?.toInt() ?? 0,
         skipHidden: json['skipHidden'] as bool? ?? true,
+        autoCheckUpdate: json['autoCheckUpdate'] as bool? ?? true,
         lastStorageId: json['lastStorageId'] as String?,
       );
 }

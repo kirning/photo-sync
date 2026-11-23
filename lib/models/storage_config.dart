@@ -126,6 +126,7 @@ class UploadedRecord {
     required this.modifiedMs,
     required this.uploadedAt,
     this.jobId,
+    this.contentHash,
   });
 
   final String path;
@@ -135,6 +136,11 @@ class UploadedRecord {
   final int modifiedMs;
   final DateTime uploadedAt;
   final String? jobId;
+
+  /// 文件内容的 SHA-256（旧版本的记录可能没有）。
+  ///
+  /// 有它就可以跨路径判断「同一张照片是不是已经传过」。
+  final String? contentHash;
 
   String get key => '$storageId|$path';
 
@@ -146,6 +152,7 @@ class UploadedRecord {
         'modifiedMs': modifiedMs,
         'uploadedAt': uploadedAt.toIso8601String(),
         'jobId': jobId,
+        'hash': contentHash,
       };
 
   static UploadedRecord fromJson(Map<String, dynamic> json) => UploadedRecord(
@@ -156,5 +163,6 @@ class UploadedRecord {
         modifiedMs: (json['modifiedMs'] as num?)?.toInt() ?? 0,
         uploadedAt: DateTime.tryParse('${json['uploadedAt']}') ?? DateTime.now(),
         jobId: json['jobId'] as String?,
+        contentHash: json['hash'] as String?,
       );
 }

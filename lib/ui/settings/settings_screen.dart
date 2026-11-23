@@ -63,6 +63,66 @@ class SettingsScreen extends StatelessWidget {
     await _update(state, (next) => next.folderTemplate = template);
   }
 
+  /// 自定义“忽略小于”的阈值（单位 KB）。
+  Future<void> _editMinSize(BuildContext context, AppState state) async {
+    final current = state.settings.minImageBytes;
+    final controller = TextEditingController(
+      text: current > 0 ? '${(current / 1024).round()}' : '',
+    );
+    final value = await showDialog<int>(
+      context: context,
+      builder: (context) {
+        String? errorText;
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: const Text('自定义忽略大小'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: '小于该大小的照片不上传',
+                    suffixText: 'KB',
+                    errorText: errorText,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '填 0 表示不忽略。上限 102400 KB（100 MB）。',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final text = controller.text.trim();
+                  final kb = double.tryParse(text);
+                  if (kb == null || kb < 0 || kb > 102400) {
+                    setState(() => errorText = '请输入 0 ~ 102400 之间的数字');
+                    return;
+                  }
+                  Navigator.of(context).pop((kb * 1024).round());
+                },
+                child: const Text('确定'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (value == null) return;
+    await _update(state, (next) => next.minImageBytes = value);
+  }
+
   Future<void> _resetIndex(BuildContext context, AppState state) async {
     final choice = await showDialog<String>(
       context: context,
@@ -100,6 +160,8 @@ class SettingsScreen extends StatelessWidget {
     final state = context.watch<AppState>();
     final settings = state.settings;
     final scheme = Theme.of(context).colorScheme;
+    const sizePresets = [0, 10 * 1024, 50 * 1024, 100 * 1024];
+    final customSize = !sizePresets.contains(settings.minImageBytes);
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
@@ -164,6 +226,13 @@ class SettingsScreen extends StatelessWidget {
             onChanged: (value) =>
                 _update(state, (next) => next.autoScanOnStart = value),
           ),
+          SwitchListTile(
+            title: const Text('启动时检查更新'),
+            subtitle: const Text('从 GitHub Releases 检查新版本'),
+            value: settings.autoCheckUpdate,
+            onChanged: (value) =>
+                _update(state, (next) => next.autoCheckUpdate = value),
+          ),
           const Divider(),
           _SectionHeader(title: '扫描'),
           ListTile(
@@ -173,7 +242,7 @@ class SettingsScreen extends StatelessWidget {
               child: Wrap(
                 spacing: 8,
                 children: [
-                  for (final option in const [0, 10 * 1024, 50 * 1024, 100 * 1024])
+                  for (final option in sizePresets)
                     ChoiceChip(
                       label: Text(option == 0 ? '不忽略' : Fmt.bytes(option)),
                       selected: settings.minImageBytes == option,
@@ -182,6 +251,19 @@ class SettingsScreen extends StatelessWidget {
                         (next) => next.minImageBytes = option,
                       ),
                     ),
+                  ChoiceChip(
+                    avatar: Icon(
+                      customSize ? Icons.tune : Icons.edit_outlined,
+                      size: 16,
+                    ),
+                    label: Text(
+                      customSize
+                          ? '自定义 ${Fmt.bytes(settings.minImageBytes)}'
+                          : '自定义…',
+                    ),
+                    selected: customSize,
+                    onSelected: (_) => _editMinSize(context, state),
+                  ),
                 ],
               ),
             ),
@@ -213,7 +295,11 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: Text('${AppInfo.appName} ${AppInfo.versionLabel}'),
+            subtitle: Text(
+              state.availableUpdate != null
+                  ? '发现新版本 ${state.availableUpdate!.version}'
+                  : '${AppInfo.appName} ${AppInfo.versionLabel}',
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const AboutScreen()),

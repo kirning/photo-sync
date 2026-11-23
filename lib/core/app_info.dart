@@ -2,8 +2,8 @@
 class AppInfo {
   const AppInfo._();
 
-  static const String version = '0.1.1';
-  static const String buildNumber = '2';
+  static const String version = '0.2.0';
+  static const String buildNumber = '3';
   static const String repository = 'https://github.com/kirning/photo-sync';
   static const String appName = '照片同步';
 

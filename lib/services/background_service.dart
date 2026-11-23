@@ -6,6 +6,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 
 import '../core/crash_log.dart';
 import '../core/json_file.dart';
+import '../core/file_hash.dart';
 import '../data/app_paths.dart';
 import '../models/upload_job.dart';
 import 'upload_runner.dart';
@@ -161,6 +162,9 @@ class _BackgroundController {
       force: true,
     );
 
+    final hashCache = HashCache(paths.hashCacheFile);
+    await hashCache.load();
+
     final runner = UploadRunner(
       spec: spec,
       statusFile: paths.jobStatusFile(jobId),
@@ -168,6 +172,7 @@ class _BackgroundController {
       control: control,
       canUseNetwork: () => NetworkInspector.hasUsableNetwork(wifiOnly: spec.wifiOnly),
       onStatus: _onStatus,
+      hashCache: hashCache,
     );
 
     JobStatus status;
@@ -186,6 +191,12 @@ class _BackgroundController {
         updatedAt: DateTime.now(),
       );
       await JsonFile(paths.jobStatusFile(jobId)).writeAtomic(status.toJson());
+    }
+
+    try {
+      await hashCache.save();
+    } catch (_) {
+      // 哈希缓存写失败不影响任务结果。
     }
 
     _activeJobId = null;

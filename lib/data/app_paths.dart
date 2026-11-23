@@ -19,9 +19,15 @@ class AppPaths {
   File get settingsFile => file('settings.json');
   File get jobsIndexFile => file('jobs.json');
 
+  /// 文件内容哈希缓存，用于按内容判断照片是否已经上传过。
+  File get hashCacheFile => file('hashes.json');
+
   Directory get jobsDir => Directory(p.join(root.path, 'jobs'));
   Directory get uploadsDir => Directory(p.join(root.path, 'uploads'));
   Directory get logsDir => Directory(p.join(root.path, 'logs'));
+
+  /// 下载的新版本安装包目录（同时是 FileProvider 声明的 files-path/updates）。
+  Directory get updatesDir => Directory(p.join(root.path, 'updates'));
 
   File jobSpecFile(String jobId) => File(p.join(jobsDir.path, '$jobId.spec.json'));
   File jobStatusFile(String jobId) => File(p.join(jobsDir.path, '$jobId.status.json'));
@@ -37,5 +43,6 @@ class AppPaths {
     await jobsDir.create(recursive: true);
     await uploadsDir.create(recursive: true);
     await logsDir.create(recursive: true);
+    await updatesDir.create(recursive: true);
   }
 }

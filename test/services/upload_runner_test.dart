@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photo_sync/core/file_hash.dart';
 import 'package:photo_sync/core/json_file.dart';
 import 'package:photo_sync/models/storage_config.dart';
 import 'package:photo_sync/models/upload_job.dart';
@@ -112,6 +113,8 @@ void main() {
   UploadRunner buildRunner({
     List<File>? files,
     Map<String, String> existing = const {},
+    Map<String, String> existingHashes = const {},
+    HashCache? hashCache,
     bool wifiOnly = false,
     Future<bool> Function()? canUseNetwork,
     Duration poll = const Duration(milliseconds: 20),
@@ -133,6 +136,7 @@ void main() {
       folderTemplate: '{album}/{yyyy}/{MM}',
       concurrency: 2,
       existingRemotePaths: existing,
+      existingHashes: existingHashes,
     );
     return UploadRunner(
       spec: spec,
@@ -142,6 +146,7 @@ void main() {
       canUseNetwork: canUseNetwork ?? () async => true,
       networkPollInterval: poll,
       storageFactory: (config) => storage,
+      hashCache: hashCache,
     );
   }
 
@@ -181,6 +186,55 @@ void main() {
     expect(status.skipped, 1);
     expect(status.done, 2);
     expect(storage.uploaded, hasLength(2));
+  });
+
+  test('内容相同的两张照片只上传一次（按哈希去重）', () async {
+    final twin = File('${tempDir.path}/twin.jpg');
+    await twin.writeAsBytes(await localFiles.first.readAsBytes());
+    final cache = HashCache(File('${tempDir.path}/hashes.json'));
+
+    final runner = buildRunner(
+      files: [localFiles.first, twin],
+      hashCache: cache,
+    );
+    final status = await runner.run();
+
+    expect(status.state, JobState.completed);
+    expect(status.done, 1);
+    expect(status.skipped, 1);
+    expect(storage.uploaded, hasLength(1));
+
+    final lines = await resultsFile.readAsLines();
+    final skipped =
+        lines.map((line) => jsonDecode(line) as Map<String, dynamic>).singleWhere(
+              (json) => json['status'] == 'skipped',
+            );
+    expect(skipped['path'], twin.path);
+    expect(skipped['remotePath'], storage.uploaded.single);
+    expect(skipped['hash'], hasLength(64));
+  });
+
+  test('索引里已有相同哈希时直接跳过（同一张照片换了路径）', () async {
+    final cache = HashCache(File('${tempDir.path}/hashes.json'));
+    final hash = await cache.hashOf(localFiles.first);
+
+    final runner = buildRunner(
+      files: [localFiles.first],
+      hashCache: cache,
+      existingHashes: {hash: '相机/2026/05/早就传过.jpg'},
+    );
+    final status = await runner.run();
+
+    expect(status.state, JobState.completed);
+    expect(status.skipped, 1);
+    expect(status.done, 0);
+    expect(storage.uploaded, isEmpty);
+
+    final json =
+        jsonDecode((await resultsFile.readAsLines()).single) as Map<String, dynamic>;
+    expect(json['status'], 'skipped');
+    expect(json['remotePath'], '相机/2026/05/早就传过.jpg');
+    expect(json['hash'], hash);
   });
 
   test('远端同名但大小不同时换名上传', () async {

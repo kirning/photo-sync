@@ -31,6 +31,29 @@ class AppRepository {
   UploadedRecord? uploadedAt(String storageId, String path) =>
       _uploadIndex[storageId]?[path];
 
+  /// 按内容哈希查已上传记录（跨路径去重用）。
+  UploadedRecord? uploadedByHash(String storageId, String hash) {
+    final records = _uploadIndex[storageId];
+    if (records == null || hash.isEmpty) return null;
+    for (final record in records.values) {
+      if (record.contentHash == hash) return record;
+    }
+    return null;
+  }
+
+  /// 已上传的内容哈希 -> 远端路径，交给后台上传任务做去重。
+  Map<String, String> hashesFor(String storageId) {
+    final result = <String, String>{};
+    final records = _uploadIndex[storageId];
+    if (records == null) return result;
+    for (final record in records.values) {
+      final hash = record.contentHash;
+      if (hash == null || hash.isEmpty) continue;
+      result[hash] = record.remotePath;
+    }
+    return result;
+  }
+
   /// 这个本地文件在哪些存储上已经上传过。
   Set<String> storageIdsFor(String path) {
     final result = <String>{};
@@ -312,6 +335,7 @@ class AppRepository {
         modifiedMs: result.modifiedMs,
         uploadedAt: DateTime.now(),
         jobId: job.id,
+        contentHash: result.hash,
       );
     }
     if (records.isNotEmpty) {

@@ -91,6 +91,7 @@ class UploadJobSpec {
     required this.folderTemplate,
     required this.concurrency,
     this.existingRemotePaths = const {},
+    this.existingHashes = const {},
   });
 
   final String id;
@@ -103,6 +104,9 @@ class UploadJobSpec {
   /// 已经上传过的本地路径 -> 远端路径，用于跳过重复文件。
   final Map<String, String> existingRemotePaths;
 
+  /// 已经上传过的内容哈希 -> 远端路径，用于跨路径去重（同一张照片换个目录就不再传）。
+  final Map<String, String> existingHashes;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'storage': storage.toJson(),
@@ -111,6 +115,7 @@ class UploadJobSpec {
         'folderTemplate': folderTemplate,
         'concurrency': concurrency,
         'existing': existingRemotePaths,
+        'hashes': existingHashes,
       };
 
   static UploadJobSpec fromJson(Map<String, dynamic> json) => UploadJobSpec(
@@ -126,6 +131,8 @@ class UploadJobSpec {
         concurrency: (json['concurrency'] as num?)?.toInt() ?? 2,
         existingRemotePaths:
             (json['existing'] as Map?)?.map((k, v) => MapEntry('$k', '$v')) ?? const {},
+        existingHashes:
+            (json['hashes'] as Map?)?.map((k, v) => MapEntry('$k', '$v')) ?? const {},
       );
 }
 
@@ -248,6 +255,7 @@ class JobResult {
     required this.status,
     this.remotePath,
     this.error,
+    this.hash,
   });
 
   final String path;
@@ -258,6 +266,9 @@ class JobResult {
   final String status; // uploaded / skipped / failed
   final String? remotePath;
   final String? error;
+
+  /// 文件内容 SHA-256（用于下次按内容去重）。
+  final String? hash;
 
   bool get success => status == 'uploaded' || status == 'skipped';
 
@@ -270,6 +281,7 @@ class JobResult {
         'status': status,
         'remotePath': remotePath,
         'error': error,
+        'hash': hash,
         'at': DateTime.now().toIso8601String(),
       };
 
@@ -282,6 +294,7 @@ class JobResult {
         status: '${json['status']}',
         remotePath: json['remotePath'] as String?,
         error: json['error'] as String?,
+        hash: json['hash'] as String?,
       );
 }
 

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider 只暴露新版本安装包所在的子目录，避免把应用私有目录整体授权出去。 -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path
+        name="updates"
+        path="updates/" />
+</paths>

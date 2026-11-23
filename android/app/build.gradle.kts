@@ -48,6 +48,11 @@ kotlin {
     }
 }
 
+dependencies {
+    // FileProvider：把应用私有目录里下载好的 APK 授权给系统安装器读取。
+    implementation("androidx.core:core-ktx:1.13.1")
+}
+
 flutter {
     source = "../.."
 }

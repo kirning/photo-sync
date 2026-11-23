@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import '../core/file_hash.dart';
 import '../core/json_file.dart';
 import '../core/remote_path.dart';
 import '../models/storage_config.dart';
@@ -136,6 +137,7 @@ class UploadRunner {
     this.networkPollInterval = const Duration(seconds: 5),
     this.statusMinInterval = const Duration(milliseconds: 400),
     this.storageFactory = RemoteStorages.create,
+    this.hashCache,
   }) {
     control.onPausedChanged = _handlePausedChanged;
     control.onCancelled = _handleCancelled;
@@ -152,6 +154,12 @@ class UploadRunner {
 
   /// 创建存储客户端；默认按配置选择 WebDAV / SMB / S3，测试可注入假实现。
   final RemoteStorage Function(StorageConfig config) storageFactory;
+
+  /// 文件内容哈希缓存，用于按内容去重；为 null 时只按路径判断。
+  final HashCache? hashCache;
+
+  /// 本次任务里已经确认上传成功的「内容哈希 -> 远端路径」。
+  final Map<String, String> _knownHashes = {};
 
   int _done = 0;
   int _failed = 0;
@@ -284,6 +292,55 @@ class UploadRunner {
       return;
     }
 
+    // 按内容哈希去重：同一张照片换个目录、改个名字都不用再传一次。
+    final contentHash = await _contentHashOf(localFile);
+    if (contentHash != null) {
+      final knownRemote =
+          spec.existingHashes[contentHash] ?? _knownHashes[contentHash];
+      if (knownRemote != null && knownRemote.isNotEmpty) {
+        _skipped++;
+        _completedBytes += item.size;
+        _activeSent[workerId] = 0;
+        await _writeResult(JobResult(
+          path: item.path,
+          name: item.name,
+          albumName: item.albumName,
+          size: item.size,
+          modifiedMs: item.modifiedMs,
+          status: 'skipped',
+          remotePath: knownRemote,
+          hash: contentHash,
+        ));
+        await _publish(force: true);
+        return;
+      }
+
+      // 并发上传时，另一个 worker 可能正在传同一张照片：等它出结果，
+      // 成功就复用它的远端路径，失败才自己重试。
+      final pending = _hashLocks[contentHash];
+      if (pending != null) {
+        final sharedRemote = await pending.future;
+        if (sharedRemote != null && sharedRemote.isNotEmpty) {
+          _skipped++;
+          _completedBytes += item.size;
+          _activeSent[workerId] = 0;
+          await _writeResult(JobResult(
+            path: item.path,
+            name: item.name,
+            albumName: item.albumName,
+            size: item.size,
+            modifiedMs: item.modifiedMs,
+            status: 'skipped',
+            remotePath: sharedRemote,
+            hash: contentHash,
+          ));
+          await _publish(force: true);
+          return;
+        }
+      }
+      _hashLocks[contentHash] = Completer<String?>();
+    }
+
     final modified = item.modifiedMs > 0
         ? DateTime.fromMillisecondsSinceEpoch(item.modifiedMs)
         : DateTime.now();
@@ -308,6 +365,7 @@ class UploadRunner {
           _skipped++;
           _completedBytes += item.size;
           _activeSent[workerId] = 0;
+          if (contentHash != null) _knownHashes[contentHash] = remotePath;
           await _writeResult(JobResult(
             path: item.path,
             name: item.name,
@@ -316,6 +374,7 @@ class UploadRunner {
             modifiedMs: item.modifiedMs,
             status: 'skipped',
             remotePath: remotePath,
+            hash: contentHash,
           ));
           await _publish(force: true);
           return;
@@ -341,6 +400,7 @@ class UploadRunner {
       _completedBytes += size;
       _activeSent[workerId] = 0;
       _consecutiveFailures = 0;
+      if (contentHash != null) _knownHashes[contentHash] = remotePath;
       await _writeResult(JobResult(
         path: item.path,
         name: item.name,
@@ -349,6 +409,7 @@ class UploadRunner {
         modifiedMs: item.modifiedMs,
         status: 'uploaded',
         remotePath: remotePath,
+        hash: contentHash,
       ));
       await _publish(force: true);
     } on UploadCancelledException {
@@ -370,11 +431,24 @@ class UploadRunner {
           _abortMessage = '连续失败 $_consecutiveFailures 次，任务已停止：$message';
         }
       }
+    } finally {
+      _releaseHash(contentHash);
     }
   }
 
   int _consecutiveFailures = 0;
   final Map<String, Set<String>> _takenNames = {};
+
+  /// 正在上传的「内容哈希 -> 远端路径」预占：并发时后来者等这个 Future。
+  final Map<String, Completer<String?>> _hashLocks = {};
+
+  void _releaseHash(String? hash) {
+    if (hash == null) return;
+    final completer = _hashLocks.remove(hash);
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(_knownHashes[hash]);
+    }
+  }
 
   Future<void> _fail(JobItem item, String message) async {
     _failed++;
@@ -501,6 +575,17 @@ class UploadRunner {
     final next = _resultLock.then((_) => action()).catchError((Object _) {});
     _resultLock = next;
     return next;
+  }
+
+  /// 计算文件内容哈希；没有缓存对象或读取失败时返回 null（降级为按路径去重）。
+  Future<String?> _contentHashOf(File file) async {
+    final cache = hashCache;
+    if (cache == null) return null;
+    try {
+      return await cache.hashOf(file);
+    } on FileSystemException {
+      return null;
+    }
   }
 
   static bool _isAuthError(Object error) {

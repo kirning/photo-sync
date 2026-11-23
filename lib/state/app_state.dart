@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/app_info.dart';
 import '../core/app_log.dart';
 import '../core/permissions.dart';
 import '../data/app_paths.dart';
@@ -15,6 +16,7 @@ import '../models/upload_job.dart';
 import '../remote/remote_storages.dart';
 import '../services/background_service.dart';
 import '../services/media_scanner.dart';
+import '../services/update_service.dart';
 
 class UploadStartResult {
   const UploadStartResult({
@@ -47,6 +49,12 @@ class AppState extends ChangeNotifier {
   bool ready = false;
   String? fatalError;
   MediaAccess mediaAccess = MediaAccess.granted;
+
+  /// 发现的新版本（为 null 表示已是最新）。
+  UpdateInfo? availableUpdate;
+  bool checkingUpdate = false;
+  String? updateError;
+  DateTime? lastUpdateCheck;
 
   final Map<String, List<MediaFile>> _albumFiles = {};
   final Map<String, ScanOutcome> _scanOutcomes = {};
@@ -150,6 +158,7 @@ class AppState extends ChangeNotifier {
 
       _ticker = Timer.periodic(const Duration(seconds: 2), (_) => refreshJobs());
       unawaited(refreshJobs());
+      if (settings.autoCheckUpdate) unawaited(checkForUpdate(silent: true));
       if (settings.autoScanOnStart) unawaited(scanAll());
     } catch (error, stack) {
       fatalError = '初始化失败：$error';
@@ -350,6 +359,7 @@ class AppState extends ChangeNotifier {
       wifiOnly: job.wifiOnly,
       folderTemplate: settings.folderTemplate,
       concurrency: settings.concurrency,
+      existingHashes: repo.hashesFor(storage.id),
     );
     try {
       await service.enqueue(spec, paths);
@@ -456,5 +466,37 @@ class AppState extends ChangeNotifier {
       await repo.updateAlbum(album.copyWith(uploadedCount: count));
     }
     notifyListeners();
+  }
+
+  // ---------------------------------------------------------------- 自动更新
+
+  /// 检查 GitHub Releases 上是否有新版本。
+  ///
+  /// [silent] 为 true 时（启动自动检查）只更新状态，不把错误弹给用户。
+  Future<void> checkForUpdate({bool silent = false}) async {
+    if (checkingUpdate) return;
+    checkingUpdate = true;
+    if (!silent) updateError = null;
+    notifyListeners();
+    try {
+      final abi = await UpdateService.deviceAbi();
+      final info = await UpdateService.fetchLatest(preferredAbi: abi);
+      lastUpdateCheck = DateTime.now();
+      updateError = null;
+      final newer = UpdateService.isNewerVersion(info.version, AppInfo.version);
+      availableUpdate = newer ? info : null;
+      if (newer) {
+        AppLog.instance.info('update', '发现新版本 ${info.version}');
+      }
+    } on UpdateException catch (error) {
+      updateError = error.message;
+      if (!silent) AppLog.instance.warn('update', '检查更新失败：${error.message}');
+    } catch (error) {
+      updateError = '检查更新失败：$error';
+      if (!silent) AppLog.instance.warn('update', updateError!);
+    } finally {
+      checkingUpdate = false;
+      notifyListeners();
+    }
   }
 }
