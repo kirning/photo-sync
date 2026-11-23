@@ -27,9 +27,21 @@ class BuiltinDirectory {
 class MediaScanner {
   const MediaScanner._();
 
-  static const List<String> _skipDirectoryNames = {
-    'cache', '.cache', 'thumbnails', '.thumbnails', 'tmp', 'temp', '.trash', '.trash-1000',
-    'lost.dir', 'android/data', 'android/obb', '.nomedia', 'recycle', '$recycle.bin',
+  static const Set<String> _skipDirectoryNames = {
+    'cache',
+    '.cache',
+    'thumbnails',
+    '.thumbnails',
+    'tmp',
+    'temp',
+    '.trash',
+    '.trash-1000',
+    'lost.dir',
+    'android',
+    'obb',
+    '.nomedia',
+    'recycle',
+    r'$recycle.bin',
   };
 
   /// 常见相册目录（按优先级），只返回实际存在的目录。

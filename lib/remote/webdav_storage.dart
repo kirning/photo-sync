@@ -4,7 +4,6 @@ import 'dart:io';
 
 import '../core/app_log.dart';
 import '../core/remote_path.dart';
-import '../models/storage_config.dart';
 import 'options.dart';
 import 'remote_storage.dart';
 
@@ -55,6 +54,7 @@ List<WebDavEntry> parsePropfind(
 }) {
   final entries = <WebDavEntry>[];
   if (xml.isEmpty) return entries;
+  final decodedBasePath = _normalizePath(_decodeHref(basePath));
   final blockPattern = RegExp(
     r'<(?:[A-Za-z_][\w.-]*:)?response\b[^>]*>(.*?)</(?:[A-Za-z_][\w.-]*:)?response\s*>',
     caseSensitive: false,
@@ -66,7 +66,7 @@ List<WebDavEntry> parsePropfind(
     if (href == null || href.trim().isEmpty) continue;
     final normalizedPath = _normalizePath(_decodeHref(href));
     if (normalizedPath.isEmpty) continue;
-    if (!includeSelf && _isSameEntry(normalizedPath, basePath)) continue;
+    if (!includeSelf && _isSameEntry(normalizedPath, decodedBasePath)) continue;
     final sizeText = _tagText(block, 'getcontentlength');
     final modifiedText = _tagText(block, 'getlastmodified');
     entries.add(
@@ -89,7 +89,7 @@ List<WebDavEntry> parsePropfind(
 /// 例如 `DCIM/2024/05/IMG_0001.jpg`）；实现内部通过 [resolve] 拼上 root，
 /// 再构造真正的请求地址。调用方不需要（也不应该）把 root 带进参数。
 class WebDavStorage extends RemoteStorage {
-  WebDavStorage(StorageConfig config) : super(config);
+  WebDavStorage(super.config);
 
   static const Duration _connectTimeout = Duration(seconds: 20);
   static const Duration _requestTimeout = Duration(seconds: 60);
@@ -688,7 +688,13 @@ String _decodeHref(String raw) {
   if (value.isEmpty) return '';
   final uri = Uri.tryParse(value);
   if (uri != null && uri.path.isNotEmpty) {
-    return uri.path;
+    // Uri.path 保留百分号编码，这里统一解成可读路径，
+    // 才能和调用方传入的未编码路径做比较。
+    try {
+      return Uri.decodeFull(uri.path);
+    } on FormatException {
+      return uri.path;
+    }
   }
   try {
     return Uri.decodeFull(value);

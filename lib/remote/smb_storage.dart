@@ -5,7 +5,6 @@ import 'package:smb_connect/smb_connect.dart';
 
 import '../core/app_log.dart';
 import '../core/remote_path.dart';
-import '../models/storage_config.dart';
 import 'options.dart';
 import 'remote_storage.dart';
 
@@ -15,7 +14,7 @@ import 'remote_storage.dart';
 /// 没有前导 `/`，例如 `DCIM/2024/05/IMG_0001.jpg`；内部再拼成
 /// `/<share>/目录/文件` 的 SMB 绝对路径。
 class SmbStorage extends RemoteStorage {
-  SmbStorage(StorageConfig config) : super(config);
+  SmbStorage(super.config);
 
   static const Duration _connectTimeout = Duration(seconds: 20);
   static const Duration _closeTimeout = Duration(seconds: 5);
@@ -266,6 +265,8 @@ class SmbStorage extends RemoteStorage {
   Future<SmbConnect> _ensureClient() {
     final existing = _client;
     if (existing != null) return Future<SmbConnect>.value(existing);
+    // close() 之后再次使用（例如同一次“测试连接”流程）需要重新连接。
+    _disposed = false;
     return _connecting ??= _connectAndCache().whenComplete(() {
       _connecting = null;
     });
@@ -291,6 +292,15 @@ class SmbStorage extends RemoteStorage {
           }
         },
       ).timeout(_connectTimeout);
+      if (_disposed) {
+        // 连接期间被 close() 关掉了，别把这条连接留在缓存里。
+        try {
+          await client.close().timeout(_closeTimeout);
+        } catch (error) {
+          AppLog.instance.debug('smb', '关闭放弃的连接时忽略异常：${_errorText(error)}');
+        }
+        throw RemoteException('连接已关闭，请重试');
+      }
       _client = client;
       return client;
     } catch (error) {

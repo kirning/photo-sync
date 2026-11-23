@@ -408,9 +408,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  UploadJob? jobById(String id) {
+    for (final job in jobs) {
+      if (job.id == id) return job;
+    }
+    return null;
+  }
+
   Future<void> refreshJobs() async {
-    if (_refreshingJobs) return;
-    _refreshingJobs = true;
+    if (_refreshingJobs) return;    _refreshingJobs = true;
     var changed = false;
     try {
       for (final job in List<UploadJob>.from(jobs)) {

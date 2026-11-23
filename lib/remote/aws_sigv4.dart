@@ -51,6 +51,12 @@ class AwsSigV4 {
     return buffer.toString();
   }
 
+  /// 从解码后的路径片段重建规范路径（保留 `/` 分隔与末尾空段）。
+  static String _canonicalUriFromSegments(List<String> decodedSegments) {
+    if (decodedSegments.isEmpty) return '/';
+    return '/${decodedSegments.map((e) => awsEncode(e)).join('/')}';
+  }
+
   /// 规范化的对象路径：逐段编码，保留 `/`。
   static String canonicalUri(String path) {
     final segments = path.split('/');
@@ -169,7 +175,9 @@ class AwsSigV4 {
       allHeaders['x-amz-security-token'] = credentials.sessionToken!;
     }
 
-    final canonicalUriValue = canonicalUri(url.path.isEmpty ? '/' : url.path);
+    // Uri.path 返回的是已百分号编码的路径，直接再编码会变成 %2520；
+    // 因此用解码后的 pathSegments 逐段编码重建规范路径。
+    final canonicalUriValue = _canonicalUriFromSegments(url.pathSegments);
     final canonicalQueryValue = canonicalQuery(
       url.queryParametersAll.map((k, v) => MapEntry(k, v.isEmpty ? '' : v.first)),
     );

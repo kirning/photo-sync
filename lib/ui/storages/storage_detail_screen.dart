@@ -86,7 +86,7 @@ class _StorageDetailScreenState extends State<StorageDetailScreen> {
             tooltip: '测试连接',
             onPressed: () async {
               final error = await state.testStorage(storage);
-              if (!mounted) return;
+              if (!context.mounted) return;
               if (error != null) {
                 showMessage(context, '连接失败：$error', error: true);
               } else {

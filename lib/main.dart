@@ -15,7 +15,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final root = await getApplicationSupportDirectory();
-  final paths = AppPaths(root.path);
+  final paths = AppPaths(root);
   await paths.ensureDirectories();
 
   try {

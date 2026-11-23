@@ -143,6 +143,24 @@ void main() {
       expect(run(80)['Authorization'], isNot(run(8080)['Authorization']));
     });
 
+    test('已编码路径不会被二次编码', () {
+      Map<String, String> run(Uri url) => AwsSigV4.sign(
+            method: 'PUT',
+            url: url,
+            headers: const {},
+            payloadHash: AwsSigV4.sha256HexOfString(''),
+            credentials: const AwsCredentials(accessKey: 'AK', secretKey: 'SK'),
+            region: 'us-east-1',
+            service: 's3',
+            timestamp: DateTime.utc(2026, 5, 6, 7, 8, 9),
+          );
+      final encoded =
+          Uri.parse('https://bucket.s3.amazonaws.com/dir/%E7%85%A7%E7%89%87%201.jpg');
+      final built =
+          Uri.https('bucket.s3.amazonaws.com', '/dir/照片 1.jpg');
+      expect(run(encoded)['Authorization'], run(built)['Authorization']);
+    });
+
     test('sha256 空串', () {
       expect(
         AwsSigV4.sha256HexOfString(''),

@@ -12,9 +12,12 @@ dependencies:
   provider: ^6.1.5
   path: ^1.9.1
   path_provider: ^2.1.6
-  shared_preferences: ^2.5.6
   permission_handler: ^13.0.2
-  file_picker: ^13.4.1
+  file_picker: 8.3.7
+  # 固定到 2.2.x：2.3.x 起通过 jni 调用原生代码，会强制要求本地/CI 安装 NDK。
+  path_provider_android: 2.2.20
+  # file_picker 8.x 的 compileSdk 是 34，这里配平它的 lifecycle 依赖版本。
+  flutter_plugin_android_lifecycle: 2.0.24
   connectivity_plus: ^7.3.2
   flutter_background_service: ^5.1.0
   smb_connect: ^0.0.9

@@ -103,10 +103,10 @@ abstract class RemoteStorage {
         rethrow;
       } on SocketException catch (error) {
         lastError = RemoteException('网络连接失败：${error.message}', retryable: true);
-        if (attempt == retries) rethrow lastError;
+        if (attempt == retries) throw lastError;
       } on TimeoutException {
         lastError = RemoteException('网络超时', retryable: true);
-        if (attempt == retries) rethrow lastError;
+        if (attempt == retries) throw lastError;
       }
       await Future<void>.delayed(Duration(milliseconds: 600 * (attempt + 1)));
     }

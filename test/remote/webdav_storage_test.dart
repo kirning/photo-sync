@@ -102,13 +102,13 @@ void main() {
         'https://example.com/dav/photos/2024/05/my%20photo.jpg',
       );
       expect(uri.toString(), isNot(contains('%2520')));
-      expect(uri.path, '/dav/photos/2024/05/my photo.jpg');
+      expect('/${uri.pathSegments.join('/')}', '/dav/photos/2024/05/my photo.jpg');
     });
 
     test('中文按 UTF-8 百分号编码一次', () {
       final uri = options().uriFor('相册/照片.jpg');
 
-      expect(uri.path, '/dav/photos/相册/照片.jpg');
+      expect('/${uri.pathSegments.join('/')}', '/dav/photos/相册/照片.jpg');
       expect(uri.toString(), contains('%E7%9B%B8%E5%86%8C'));
       expect(uri.toString(), isNot(contains('%25')));
     });
@@ -116,7 +116,7 @@ void main() {
     test('# 号是路径字符而不是 fragment，只编码一次', () {
       final uri = options().uriFor('a#b.jpg');
 
-      expect(uri.path, '/dav/photos/a#b.jpg');
+      expect('/${uri.pathSegments.join('/')}', '/dav/photos/a#b.jpg');
       expect(uri.toString(), endsWith('/a%23b.jpg'));
       expect(uri.hasFragment, isFalse);
       expect(uri.toString(), isNot(contains('%2523')));

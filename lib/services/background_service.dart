@@ -1,11 +1,11 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 
 import '../core/json_file.dart';
 import '../data/app_paths.dart';
-import '../models/album.dart';
 import '../models/upload_job.dart';
 import 'upload_runner.dart';
 
@@ -35,7 +35,7 @@ Future<void> initBackgroundService() async {
 }
 
 @pragma('vm:entry-point')
-void iosBackgroundEntry(ServiceInstance service) {}
+Future<bool> iosBackgroundEntry(ServiceInstance service) async => true;
 
 /// 后台 isolate 入口。这里只能使用纯 Dart / 已注册插件，不要碰 UI。
 @pragma('vm:entry-point')
@@ -49,7 +49,6 @@ class _BackgroundController {
   _BackgroundController(this.service);
 
   final ServiceInstance service;
-  final FlutterBackgroundService _platform = FlutterBackgroundService();
 
   AppPaths? _paths;
   final List<String> _queue = [];
@@ -63,27 +62,27 @@ class _BackgroundController {
   Future<void> start() async {
     service.on('runJob').listen(_onRunJob);
     service.on('pauseJob').listen((event) {
-      final jobId = '${event?.arguments?['jobId']}';
+      final jobId = '${event?['jobId']}';
       if (jobId == _activeJobId) _control?.pause();
     });
     service.on('resumeJob').listen((event) {
-      final jobId = '${event?.arguments?['jobId']}';
+      final jobId = '${event?['jobId']}';
       if (jobId == _activeJobId) _control?.resume();
     });
     service.on('cancelJob').listen((event) {
-      final jobId = '${event?.arguments?['jobId']}';
+      final jobId = '${event?['jobId']}';
       if (jobId == _activeJobId) _control?.cancel();
     });
     service.on('stopService').listen((_) => service.stopSelf());
   }
 
   Future<void> _onRunJob(Map<String, dynamic>? event) async {
-    final args = event?.arguments ?? const <String, dynamic>{};
+    final args = event ?? const <String, dynamic>{};
     final jobId = '${args['jobId'] ?? ''}';
     final root = '${args['root'] ?? ''}';
     if (jobId.isEmpty) return;
     if (root.isNotEmpty && _paths == null) {
-      _paths = AppPaths(root);
+      _paths = AppPaths(Directory(root));
       await _paths!.ensureDirectories();
       await _recover();
     }

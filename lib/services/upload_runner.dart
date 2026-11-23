@@ -33,7 +33,7 @@ class NetworkInspector {
   static Future<bool> hasUsableNetwork({required bool wifiOnly}) async {
     final interfaces = await _interfaces();
     if (interfaces.isEmpty) return false;
-    for (final entry in interfaces) {
+    for (final entry in interfaces.entries) {
       final name = entry.key.toLowerCase();
       final addresses = entry.value;
       if (addresses.isEmpty) continue;

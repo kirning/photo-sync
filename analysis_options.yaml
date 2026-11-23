@@ -9,3 +9,9 @@ linter:
 analyzer:
   errors:
     invalid_annotation_target: ignore
+    # Flutter 3.50 起 material.dart 被标记为弃用（迁移到 material_ui 的实验包），
+    # 本项目继续使用稳定的 material.dart。
+    deprecated_member_use: ignore
+  exclude:
+    - build/**
+    - android/**

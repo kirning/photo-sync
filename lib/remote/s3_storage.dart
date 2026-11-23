@@ -7,7 +7,6 @@ import 'package:xml/xml.dart';
 
 import '../core/app_log.dart';
 import '../core/remote_path.dart';
-import '../models/storage_config.dart';
 import 'aws_sigv4.dart';
 import 'options.dart';
 import 'remote_storage.dart';
@@ -18,7 +17,7 @@ import 'remote_storage.dart';
 /// 例如 `DCIM/2024/05/IMG_0001.jpg`。对象 URL 经 [S3Options.uriFor] 拼上
 /// 配置里的远端目录（root）；列举对象时用 [resolve] 得到完整 Key 再算前缀。
 class S3Storage extends RemoteStorage {
-  S3Storage(StorageConfig config) : super(config);
+  S3Storage(super.config);
 
   /// 空 body 的 SHA-256，GET / HEAD / DELETE 签名时使用。
   static const String _emptySha256 =
