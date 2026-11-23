@@ -42,8 +42,14 @@ class WebDavOptions {
   Uri uriFor(String relative) {
     final cleanRelative = RemotePathUtil.join([root, relative]);
     final basePath = baseUrl.path.replaceAll(RegExp(r'/+$'), '');
-    final path =
-        cleanRelative.isEmpty ? (basePath.isEmpty ? '/' : basePath) : '$basePath/$cleanRelative';
+    // 目录（relative 为空）保留结尾斜杠：多数 WebDAV 服务对集合要求带 `/`，
+    // 否则会返回 301/404。
+    final String path;
+    if (cleanRelative.isEmpty) {
+      path = basePath.isEmpty ? '/' : '$basePath/';
+    } else {
+      path = '$basePath/$cleanRelative';
+    }
     return baseUrl.replace(path: path);
   }
 }

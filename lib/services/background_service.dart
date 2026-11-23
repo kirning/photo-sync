@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:flutter_background_service/flutter_background_service.dart';
 
+import '../core/crash_log.dart';
 import '../core/json_file.dart';
 import '../data/app_paths.dart';
 import '../models/upload_job.dart';
@@ -41,8 +42,13 @@ Future<bool> iosBackgroundEntry(ServiceInstance service) async => true;
 @pragma('vm:entry-point')
 void backgroundServiceEntry(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
-  final controller = _BackgroundController(service);
-  await controller.start();
+  try {
+    final controller = _BackgroundController(service);
+    await controller.start();
+  } catch (error, stack) {
+    // 后台 isolate 里出错不会传到 UI，至少留一份记录并结束服务。
+    CrashLog.record('isolate', '$error', stack);
+  }
 }
 
 class _BackgroundController {
@@ -84,6 +90,8 @@ class _BackgroundController {
     if (root.isNotEmpty && _paths == null) {
       _paths = AppPaths(Directory(root));
       await _paths!.ensureDirectories();
+      // 让后台 isolate 的异常也能落到 crash.log（每个 isolate 各装一次）。
+      await CrashLog.init(_paths!.root);
       await _recover();
     }
     if (_paths == null) return;

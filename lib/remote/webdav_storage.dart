@@ -134,7 +134,8 @@ class WebDavStorage extends RemoteStorage {
   @override
   Future<String?> test() async {
     final options = _requireOptions();
-    final uri = options.baseUrl;
+    // 集合地址带结尾斜杠，避免部分服务端返回 301。
+    final uri = options.uriFor('');
     final request = await _open('PROPFIND', uri);
     request.headers.set('Depth', '0');
     request.headers.contentType = _xmlContentType;
