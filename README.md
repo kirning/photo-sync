@@ -1,5 +1,7 @@
 # 照片同步 Photo Sync
 
+[![Build APK](https://github.com/kirning/photo-sync/actions/workflows/build.yml/badge.svg)](https://github.com/kirning/photo-sync/actions/workflows/build.yml)
+
 一款 Flutter 编写的 Android 相册云同步工具：自动发现手机里的照片目录，把整本相册或有选择的照片上传到 **WebDAV / SMB / S3** 存储，上传过程在后台前台服务里跑，已上传的照片有明确标记，也能直接删除云端的副本。
 
 当前版本：**0.1.0**（首个可用版本）
@@ -32,7 +34,10 @@
 
 - Flutter **3.50.1**（stable）
 - JDK 17
-- Android SDK（compileSdk 见 `android/app/build.gradle.kts`）
+- Android SDK：compileSdk 37（`permission_handler` 13.x 的要求），build-tools 36+
+- 不需要安装 NDK：`android/app/build.gradle.kts` 里显式固定了 `ndkVersion = "26.1.10909125"`，插件对 NDK 28.2 的提示只是警告
+
+> 依赖里 `file_picker` 固定在 8.x、`flutter_plugin_android_lifecycle` 固定在 2.0.24、`path_provider_android` 固定在 2.2.x：新版本会把 `jni` 插件带进来，从而强制要求 NDK 与更高的 compileSdk，插件之间容易互相打架。升级前请先在本机跑通 release 构建。
 
 ```bash
 flutter pub get
