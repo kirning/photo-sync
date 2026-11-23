@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import '../core/json_file.dart';
 import '../core/remote_path.dart';
+import '../models/storage_config.dart';
 import '../models/upload_job.dart';
 import '../remote/remote_storage.dart';
 import '../remote/remote_storages.dart';
@@ -134,6 +135,7 @@ class UploadRunner {
     this.onStatus,
     this.networkPollInterval = const Duration(seconds: 5),
     this.statusMinInterval = const Duration(milliseconds: 400),
+    this.storageFactory = RemoteStorages.create,
   }) {
     control.onPausedChanged = _handlePausedChanged;
     control.onCancelled = _handleCancelled;
@@ -147,6 +149,9 @@ class UploadRunner {
   final void Function(JobStatus status)? onStatus;
   final Duration networkPollInterval;
   final Duration statusMinInterval;
+
+  /// 创建存储客户端；默认按配置选择 WebDAV / SMB / S3，测试可注入假实现。
+  final RemoteStorage Function(StorageConfig config) storageFactory;
 
   int _done = 0;
   int _failed = 0;
@@ -191,7 +196,7 @@ class UploadRunner {
     final storages = <RemoteStorage>[];
     try {
       for (var i = 0; i < workerCount; i++) {
-        final storage = RemoteStorages.create(spec.storage);
+        final storage = storageFactory(spec.storage);
         await storage.open();
         storages.add(storage);
       }

@@ -27,8 +27,74 @@ class AlbumsScreen extends StatelessWidget {
       if (album != null) {
         showMessage(context, '已添加相册「${album.name}」');
       }
+    } on FileSystemException {
+      // 部分机型的选择器只返回 content:// URI，无法直接按路径读取，
+      // 这时引导用户手动填写实际目录。
+      if (context.mounted) await _promptManualPath(context, state);
     } catch (error) {
-      if (context.mounted) showMessage(context, '添加目录失败：$error', error: true);
+      if (context.mounted) {
+        showMessage(context, '添加目录失败：$error，可以手动输入路径', error: true);
+        await _promptManualPath(context, state);
+      }
+    }
+  }
+
+  /// 手动输入目录路径：FilePicker 在个别系统上拿不到真实路径时使用。
+  Future<void> _promptManualPath(BuildContext context, AppState state) async {
+    final controller = TextEditingController(
+      text: '/storage/emulated/0/Pictures',
+    );
+    final path = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('手动输入目录'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('输入照片所在目录的完整路径：'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '目录路径',
+                hintText: '/storage/emulated/0/DCIM/Camera',
+              ),
+              onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '常见路径：/storage/emulated/0/DCIM/Camera、'
+              '/storage/emulated/0/Pictures、/storage/emulated/0/Download',
+              style: Theme.of(dialogContext).textTheme.bodySmall,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+    if (path == null || path.isEmpty) return;
+    try {
+      final album = await state.addManualAlbum(path);
+      if (album == null) return;
+      if (context.mounted) {
+        showMessage(context, '已添加相册「${album.name}」');
+      }
+    } catch (error) {
+      if (context.mounted) {
+        showMessage(context, '无法读取该目录：$error', error: true);
+      }
     }
   }
 
@@ -58,6 +124,23 @@ class AlbumsScreen extends StatelessWidget {
             tooltip: '扫描全部',
             onPressed: albums.isEmpty ? null : () => state.scanAll(),
             icon: const Icon(Icons.refresh),
+          ),
+          PopupMenuButton<String>(
+            tooltip: '更多',
+            onSelected: (value) {
+              if (value == 'path') _promptManualPath(context, state);
+            },
+            itemBuilder: (menuContext) => const [
+              PopupMenuItem(
+                value: 'path',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.keyboard_outlined),
+                  title: Text('手动输入目录路径'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
