@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'core/app_info.dart';
 import 'core/app_log.dart';
+import 'core/crash_log.dart';
 import 'data/app_paths.dart';
 import 'data/app_repository.dart';
 import 'services/background_service.dart';
@@ -15,6 +16,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final root = await getApplicationSupportDirectory();
+  // 尽早安装异常捕获，后续任何未捕获异常都会写进 crash.log。
+  await CrashLog.init(root);
+
   final paths = AppPaths(root);
   await paths.ensureDirectories();
 

@@ -272,7 +272,8 @@ class AppState extends ChangeNotifier {
     _testingStorage.add(config.id);
     notifyListeners();
     try {
-      final error = await RemoteStorages.test(config);
+      // 网络请求放到独立 isolate，避免弱网时界面卡死。
+      final error = await RemoteStorages.testInBackground(config);
       final tested = config.copyWith(
         lastTestAt: DateTime.now(),
         lastTestOk: error == null,
@@ -291,26 +292,20 @@ class AppState extends ChangeNotifier {
   }
 
   /// 删除远端照片；返回错误信息，null 表示成功。
-  Future<String?> deleteRemoteFile(StorageConfig config, UploadedRecord record) async {
-    final storage = RemoteStorages.create(config);
-    try {
-      await storage.open();
-      await storage.delete(record.remotePath);
+  Future<String?> deleteRemoteFile(
+      StorageConfig config, UploadedRecord record) async {
+    final error = await RemoteStorages.deleteInBackground(
+      config,
+      record.remotePath,
+    );
+    if (error == null) {
       await repo.removeUpload(config.id, record.path);
       AppLog.instance.info('storage', '已删除远端文件：${record.remotePath}');
       notifyListeners();
-      return null;
-    } catch (error) {
-      final message = error is Exception ? '$error' : '$error';
-      AppLog.instance.error('storage', '删除远端文件失败：$message');
-      return message;
-    } finally {
-      try {
-        await storage.close();
-      } catch (_) {
-        // 忽略
-      }
+    } else {
+      AppLog.instance.error('storage', '删除远端文件失败：$error');
     }
+    return error;
   }
 
   // ---------------------------------------------------------------- 上传

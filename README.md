@@ -112,6 +112,20 @@ lib/
 - 加密相册、HEIC 解码依赖系统能力，部分机型可能无法预览。
 - 上传是「一次性任务」模型：任务完成后再次上传同一张照片会被索引跳过；如需重传，可在设置里重置上传标记。
 
+## 排查问题
+
+应用会把异常记录在私有目录，下次启动时可以在「设置 → 运行日志」看到提示，点开后能查看、复制或导出崩溃记录（导出位置：`Android/data/com.kirning.photo_sync/files/crash-logs/`）。
+
+如果应用直接闪退、来不及记录，可以用电脑抓日志：
+
+```bash
+adb logcat -c
+# 在手机上复现问题，然后
+adb logcat -d > logcat.txt
+# 只看本应用相关的崩溃
+adb logcat -d | grep -E "FATAL|AndroidRuntime|photo_sync|flutter"
+```
+
 ## License
 
 MIT
