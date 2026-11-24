@@ -1,5 +1,13 @@
 # 更新日志
 
+## 0.2.1
+
+修复上传时的闪退（崩溃循环）问题。
+
+- 根因：后台上传用的前台服务在 `startForeground` 时使用的通知渠道 `photo_sync_upload` 从未创建过。`flutter_background_service` 只在「没有显式指定渠道 id」时才自动建渠道（插件源码 `BackgroundService.java:89-95`），而我们显式传了渠道 id，于是渠道不存在，系统抛 `RemoteServiceException$CannotPostForegroundServiceNotificationException: Bad notification for startForeground` 直接崩溃；随后 Watchdog 每 5 秒把服务拉起一次，形成崩溃循环。这与 WebDAV / SMB / S3 的具体存储类型无关，任何上传都会触发。
+- 修复：新增 `PhotoSyncApplication`，在 `Application.onCreate()` 里创建「上传任务」通知渠道（IMPORTANCE_LOW、不显示角标），保证进程无论怎么被拉起，`startForeground` 之前渠道都已存在。
+- 崩溃记录里如果还能看到这条 `Bad notification for startForeground`，说明装的是旧版本，请升级到 0.2.1 及以上。
+
 ## 0.2.0
 
 - 自动更新：在「关于」页检查 GitHub Releases 上的最新版本，直接下载对应架构的 APK 并调起系统安装器；设置里可开关「启动时检查更新」。

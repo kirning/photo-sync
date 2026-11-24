@@ -17,7 +17,7 @@
 
     <application
         android:label="照片同步"
-        android:name="${applicationName}"
+        android:name=".PhotoSyncApplication"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="true">
