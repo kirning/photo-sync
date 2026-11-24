@@ -21,6 +21,7 @@ Future<void> main() async {
 
   final paths = AppPaths(root);
   await paths.ensureDirectories();
+  await AppLog.instance.init(paths.logsDir);
 
   try {
     await initBackgroundService();

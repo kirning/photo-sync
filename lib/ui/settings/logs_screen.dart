@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -16,11 +18,52 @@ class LogsScreen extends StatefulWidget {
 class _LogsScreenState extends State<LogsScreen> {
   String _crashText = '';
   bool _loadingCrash = true;
+  String _persisted = '';
 
   @override
   void initState() {
     super.initState();
     _loadCrash();
+    _loadPersisted();
+  }
+
+  Future<void> _loadPersisted() async {
+    final text = await AppLog.instance.readPersisted();
+    if (!mounted) return;
+    setState(() => _persisted = text);
+  }
+
+  /// 组装完整日志：落盘历史 + 当前会话 + 崩溃记录。
+  String _fullText() {
+    final parts = <String>[];
+    if (_persisted.isNotEmpty) parts.add('--- 历史日志 ---\n$_persisted');
+    final session = AppLog.instance.dump();
+    if (session.isNotEmpty) parts.add('--- 当前会话 ---\n$session');
+    if (_crashText.isNotEmpty) parts.add('--- 崩溃记录 ---\n$_crashText');
+    return parts.join('\n\n');
+  }
+
+  Future<void> _exportLogs() async {
+    final text = _fullText();
+    final messenger = ScaffoldMessenger.of(context);
+    if (text.isEmpty) {
+      messenger.showSnackBar(const SnackBar(content: Text('还没有日志')));
+      return;
+    }
+    try {
+      final dir = await getExternalStorageDirectory();
+      if (dir == null) throw StateError('无法访问手机存储');
+      final stamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '')
+          .replaceAll('.', '')
+          .substring(0, 15);
+      final file = File('${dir.path}/photo-sync-logs-$stamp.txt');
+      await file.writeAsString(text);
+      messenger.showSnackBar(SnackBar(content: Text('日志已导出：${file.path}')));
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('导出失败：$error')));
+    }
   }
 
   Future<void> _loadCrash() async {
@@ -122,14 +165,18 @@ class _LogsScreenState extends State<LogsScreen> {
                   icon: Icon(Icons.bug_report_outlined, color: scheme.error),
                 ),
               IconButton(
+                tooltip: '导出日志',
+                onPressed: entries.isEmpty && _persisted.isEmpty && !hasCrash
+                    ? null
+                    : _exportLogs,
+                icon: const Icon(Icons.save_alt_outlined),
+              ),
+              IconButton(
                 tooltip: '复制全部',
-                onPressed: entries.isEmpty
+                onPressed: entries.isEmpty && !hasCrash
                     ? null
                     : () async {
-                        final text = hasCrash
-                            ? '${AppLog.instance.dump()}\n\n$_crashText'
-                            : AppLog.instance.dump();
-                        await Clipboard.setData(ClipboardData(text: text));
+                        await Clipboard.setData(ClipboardData(text: _fullText()));
                         if (context.mounted) showMessage(context, '日志已复制');
                       },
                 icon: const Icon(Icons.copy_all_outlined),

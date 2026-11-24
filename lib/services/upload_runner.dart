@@ -202,10 +202,17 @@ class UploadRunner {
 
     final workerCount = math.max(1, math.min(spec.concurrency, 4));
     final storages = <RemoteStorage>[];
+    _message = '正在连接存储服务…';
+    _currentName = null;
+    await _publish(force: true);
     try {
       for (var i = 0; i < workerCount; i++) {
         final storage = storageFactory(spec.storage);
-        await storage.open();
+        // 弱网/内网地址连不上时不能让任务卡在“上传中 0%”，必须给个上限。
+        await storage.open().timeout(
+              const Duration(seconds: 60),
+              onTimeout: () => throw RemoteException('连接存储服务超时（60 秒无响应）'),
+            );
         storages.add(storage);
       }
     } catch (error) {
@@ -385,16 +392,40 @@ class UploadRunner {
       }
 
       final size = item.size > 0 ? item.size : await localFile.length();
-      await storage.upload(
-        localFile,
-        remotePath,
-        isCancelled: () => control.cancelled,
-        onProgress: (sent, total) {
-          _activeSent[workerId] = sent;
-          _refreshSpeed();
-          unawaited(_publish());
-        },
-      );
+      // 长时间没有进度就直接中断：弱网或半开连接时不能让任务永远停在 0 B。
+      var stalled = false;
+      var lastSentValue = _activeSent[workerId] ?? 0;
+      var lastSentAt = DateTime.now();
+      final watchdog = Timer.periodic(const Duration(seconds: 5), (timer) {
+        final sent = _activeSent[workerId] ?? 0;
+        if (sent != lastSentValue) {
+          lastSentValue = sent;
+          lastSentAt = DateTime.now();
+          return;
+        }
+        if (DateTime.now().difference(lastSentAt) >=
+            const Duration(seconds: 120)) {
+          stalled = true;
+          timer.cancel();
+        }
+      });
+      try {
+        await storage.upload(
+          localFile,
+          remotePath,
+          isCancelled: () => control.cancelled || stalled,
+          onProgress: (sent, total) {
+            _activeSent[workerId] = sent;
+            _refreshSpeed();
+            unawaited(_publish());
+          },
+        );
+        if (stalled) {
+          throw RemoteException('上传超时：120 秒没有任何进度');
+        }
+      } finally {
+        watchdog.cancel();
+      }
 
       _done++;
       _completedBytes += size;

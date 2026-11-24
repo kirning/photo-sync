@@ -1,7 +1,7 @@
 name: photo_sync
 description: "Photo Sync - 把 Android 相册备份到 WebDAV、SMB、S3"
 publish_to: "none"
-version: 0.2.1+4
+version: 0.2.2+5
 
 environment:
   sdk: ">=3.6.0 <4.0.0"

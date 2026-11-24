@@ -3,7 +3,9 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:path_provider/path_provider.dart';
 
+import '../core/app_log.dart';
 import '../core/crash_log.dart';
 import '../core/json_file.dart';
 import '../core/file_hash.dart';
@@ -81,6 +83,39 @@ class _BackgroundController {
       if (jobId == _activeJobId) _control?.cancel();
     });
     service.on('stopService').listen((_) => service.stopSelf());
+
+    // 关键：从磁盘恢复待上传任务。
+    // 插件用 Pipe 把事件投递给后台 isolate，而 Pipe.invoke() 在没有监听者时
+    // 会**静默丢弃**消息（见 flutter_background_service_android 的 Pipe.java）。
+    // 也就是说 startService() 之后 1~2 秒内 UI 发出的 runJob 很可能直接丢了，
+    // 任务就会永远停在“上传中 0%”。所以这里不依赖消息，启动即扫盘。
+    if (await _ensurePaths()) {
+      await _recover();
+      unawaited(_pump());
+    }
+  }
+
+  /// 准备目录结构。UI 没传 root 时自己用 path_provider 取同一个目录，
+  /// 这样即使 runJob 消息丢了也能从 jobs/ 里找回任务。
+  Future<bool> _ensurePaths([String? rootHint]) async {
+    if (_paths != null) return true;
+    var root = rootHint ?? '';
+    if (root.isEmpty) {
+      try {
+        root = (await getApplicationSupportDirectory()).path;
+      } catch (error) {
+        AppLog.instance.warn('bg', '后台取目录失败：$error');
+        return false;
+      }
+    }
+    final paths = AppPaths(Directory(root));
+    await paths.ensureDirectories();
+    await AppLog.instance.init(paths.logsDir);
+    // 让后台 isolate 的异常也能落到 crash.log（每个 isolate 各装一次）。
+    await CrashLog.init(paths.root);
+    _paths = paths;
+    AppLog.instance.info('bg', '后台上传服务就绪：$root');
+    return true;
   }
 
   Future<void> _onRunJob(Map<String, dynamic>? event) async {
@@ -88,15 +123,13 @@ class _BackgroundController {
     final jobId = '${args['jobId'] ?? ''}';
     final root = '${args['root'] ?? ''}';
     if (jobId.isEmpty) return;
-    if (root.isNotEmpty && _paths == null) {
-      _paths = AppPaths(Directory(root));
-      await _paths!.ensureDirectories();
-      // 让后台 isolate 的异常也能落到 crash.log（每个 isolate 各装一次）。
-      await CrashLog.init(_paths!.root);
-      await _recover();
+    if (!await _ensurePaths(root.isEmpty ? null : root)) return;
+    // 每个 runJob 事件都顺手扫一遍磁盘，避免漏掉别的任务。
+    await _recover();
+    if (_seen.contains(jobId)) {
+      unawaited(_pump());
+      return;
     }
-    if (_paths == null) return;
-    if (_seen.contains(jobId)) return;
     _seen.add(jobId);
     _queue.add(jobId);
     unawaited(_pump());
@@ -246,11 +279,18 @@ class _BackgroundController {
   void _scheduleStopIfIdle() {
     if (_stopping || _busy || _queue.isNotEmpty) return;
     _stopping = true;
-    Future<void>.delayed(const Duration(seconds: 5), () {
+    Future<void>.delayed(const Duration(seconds: 5), () async {
       _stopping = false;
-      if (!_busy && _queue.isEmpty && _activeJobId == null) {
-        service.stopSelf();
+      if (_busy || _queue.isNotEmpty || _activeJobId != null) return;
+      // 休眠前再扫一次盘：UI 可能刚好在这个空窗期写了新的 spec 文件。
+      await _recover();
+      if (_queue.isNotEmpty) {
+        unawaited(_pump());
+        return;
       }
+      AppLog.instance.info('bg', '没有待上传任务，关闭后台服务');
+      await AppLog.instance.closeFile();
+      service.stopSelf();
     });
   }
 
@@ -290,19 +330,48 @@ class UploadBackgroundService {
   Future<void> init() => initBackgroundService();
 
   /// 写入任务描述并把任务交给后台服务。
-  Future<void> enqueue(UploadJobSpec spec, AppPaths paths) async {
+  ///
+  /// 返回 true 表示后台已经接手（状态文件出现）。
+  Future<bool> enqueue(UploadJobSpec spec, AppPaths paths) async {
     await JsonFile(paths.jobSpecFile(spec.id)).writeAtomic(spec.toJson());
-    for (final file in [paths.jobStatusFile(spec.id), paths.jobResultsFile(spec.id)]) {
+    final statusFile = paths.jobStatusFile(spec.id);
+    for (final file in [statusFile, paths.jobResultsFile(spec.id)]) {
       if (await file.exists()) await file.delete();
     }
-    if (!await _service.isRunning()) {
-      await _service.startService();
-    }
     final payload = {'jobId': spec.id, 'root': paths.root.path};
-    _service.invoke('runJob', payload);
-    // 首次启动服务时，监听器可能还没注册好，延迟重发一次；服务端按 jobId 去重。
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    _service.invoke('runJob', payload);
+    // 插件在后台 isolate 还没注册监听者时会丢掉消息（Pipe.invoke 静默丢弃），
+    // 所以这里重试到状态文件出现为止；后台服务启动时也会自己扫盘恢复。
+    for (var attempt = 0; attempt < 12; attempt++) {
+      if (!await _service.isRunning()) {
+        try {
+          await _service.startService();
+        } catch (error) {
+          AppLog.instance.warn('bg', '启动后台上传服务失败：$error');
+        }
+      }
+      _service.invoke('runJob', payload);
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (await statusFile.exists()) return true;
+    }
+    AppLog.instance.warn('bg', '后台服务没有响应，任务 ${spec.id} 可能没有开始');
+    return false;
+  }
+
+  /// 只重新通知后台服务，不动任务文件（用于“任务卡在 0%”时的自愈）。
+  Future<void> poke(String jobId, AppPaths paths) async {
+    final payload = {'jobId': jobId, 'root': paths.root.path};
+    for (var attempt = 0; attempt < 4; attempt++) {
+      if (!await _service.isRunning()) {
+        try {
+          await _service.startService();
+        } catch (error) {
+          AppLog.instance.warn('bg', '重新启动后台上传服务失败：$error');
+        }
+      }
+      _service.invoke('runJob', payload);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      if (await paths.jobStatusFile(jobId).exists()) return;
+    }
   }
 
   Future<void> pause(String jobId) async {

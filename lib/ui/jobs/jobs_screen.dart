@@ -182,11 +182,14 @@ class _JobCard extends StatelessWidget {
                             .labelSmall
                             ?.copyWith(color: scheme.onSurfaceVariant),
                       ),
-                      if (job.state == JobState.running && job.currentName != null) ...[
+                      if (job.state == JobState.running) ...[
                         const SizedBox(height: 2),
                         Text(
-                          job.currentName!,
-                          maxLines: 1,
+                          // 卡在连接/等待网络时，光看文件名看不出问题，把状态原因也显示出来。
+                          job.message ??
+                              job.currentName ??
+                              '正在准备上传…',
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context)
                               .textTheme

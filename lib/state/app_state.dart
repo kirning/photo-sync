@@ -362,7 +362,14 @@ class AppState extends ChangeNotifier {
       existingHashes: repo.hashesFor(storage.id),
     );
     try {
-      await service.enqueue(spec, paths);
+      final started = await service.enqueue(spec, paths);
+      job.startedAt = DateTime.now();
+      job.state = JobState.running;
+      if (!started) {
+        job.message = '后台服务没有响应，稍后会自动重试；也可以下拉刷新任务列表';
+      }
+      await repo.saveJobs();
+      notifyListeners();
     } catch (error) {
       job.state = JobState.failed;
       job.message = '启动后台上传失败：$error';
@@ -370,9 +377,6 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return UploadStartResult(error: job.message);
     }
-    job.startedAt = DateTime.now();
-    job.state = JobState.running;
-    await repo.saveJobs();
     AppLog.instance.info('upload', '任务「${job.id}」开始上传 ${items.length} 个文件');
     notifyListeners();
     return UploadStartResult(job: job, queued: items.length, skipped: skipped);
@@ -421,14 +425,19 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshJobs() async {
-    if (_refreshingJobs) return;    _refreshingJobs = true;
+    if (_refreshingJobs) return;
+    _refreshingJobs = true;
     var changed = false;
     try {
       for (final job in List<UploadJob>.from(jobs)) {
         if (job.state.isFinished) continue;
         final before = '${job.state.name}-${job.processed}-${job.doneBytes}';
         final status = await repo.syncJobFromDisk(job);
-        if (status == null) continue;
+        if (status == null) {
+          // 没有状态文件：后台可能还没接手（消息丢了）。别让用户干等。
+          await _checkStuckJob(job);
+          continue;
+        }
         final after = '${job.state.name}-${job.processed}-${job.doneBytes}';
         if (before != after) changed = true;
       }
@@ -446,6 +455,41 @@ class AppState extends ChangeNotifier {
       _refreshingJobs = false;
       if (changed) notifyListeners();
     }
+  }
+
+  /// 任务在跑但后台一直没有写状态文件：先催一次，等太久就判定失败。
+  final Map<String, DateTime> _stuckPokedAt = {};
+
+  Future<void> _checkStuckJob(UploadJob job) async {
+    final statusFile = paths.jobStatusFile(job.id);
+    try {
+      if (await statusFile.exists()) return;
+      if (!await paths.jobSpecFile(job.id).exists()) return;
+    } catch (_) {
+      return;
+    }
+    final startedAt = job.startedAt ?? job.createdAt;
+    final waited = DateTime.now().difference(startedAt);
+
+    if (waited > const Duration(minutes: 5)) {
+      job.state = JobState.failed;
+      job.message = '后台服务没有响应，任务已中断，请重新发起上传';
+      job.finishedAt = DateTime.now();
+      _stuckPokedAt.remove(job.id);
+      await repo.saveJobs();
+      AppLog.instance.error('job', '任务 ${job.id} 超时未启动，标记为失败');
+      return;
+    }
+
+    if (waited < const Duration(seconds: 15)) return;
+    final last = _stuckPokedAt[job.id];
+    if (last != null && DateTime.now().difference(last) < const Duration(seconds: 30)) {
+      return;
+    }
+    _stuckPokedAt[job.id] = DateTime.now();
+    AppLog.instance.warn('job', '任务 ${job.id} 没有状态文件，重新通知后台服务');
+    await service.poke(job.id, paths);
+    if (await statusFile.exists()) _stuckPokedAt.remove(job.id);
   }
 
   // ---------------------------------------------------------------- 设置
