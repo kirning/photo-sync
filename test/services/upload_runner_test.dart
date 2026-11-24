@@ -205,13 +205,20 @@ void main() {
     expect(storage.uploaded, hasLength(1));
 
     final lines = await resultsFile.readAsLines();
-    final skipped =
-        lines.map((line) => jsonDecode(line) as Map<String, dynamic>).singleWhere(
-              (json) => json['status'] == 'skipped',
-            );
-    expect(skipped['path'], twin.path);
+    final items =
+        lines.map((line) => jsonDecode(line) as Map<String, dynamic>).toList();
+    final skipped = items.singleWhere((json) => json['status'] == 'skipped');
+    final uploaded = items.singleWhere((json) => json['status'] == 'uploaded');
+    // 两个 worker 并行，谁先谁后不确定：只断言「一个上传、另一个跳过」且指向同一条远端记录。
+    expect(uploaded['path'], isNot(skipped['path']));
+    expect(<Object?>{uploaded['path'], skipped['path']}, <Object?>{
+      localFiles.first.path,
+      twin.path,
+    });
     expect(skipped['remotePath'], storage.uploaded.single);
+    expect(uploaded['remotePath'], storage.uploaded.single);
     expect(skipped['hash'], hasLength(64));
+    expect(uploaded['hash'], skipped['hash']);
   });
 
   test('索引里已有相同哈希时直接跳过（同一张照片换了路径）', () async {
